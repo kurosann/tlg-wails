@@ -621,16 +621,47 @@ func (f *Frontend) processRequest(req *edge.ICoreWebView2WebResourceRequest, arg
 		reqHeaders.Release()
 	}
 
-	if f.assets == nil {
-		// We are using the devServer let the WebView2 handle the request with its default handler
-		return
-	}
-
-	//Get the request
+	// Get the request URI
 	uri, _ := req.GetUri()
 	reqUri, err := url.ParseRequestURI(uri)
 	if err != nil {
-		f.logger.Error("Unable to parse equest uri %s: %s", uri, err)
+		f.logger.Error("Unable to parse request uri %s: %s", uri, err)
+		return
+	}
+
+	// Handle chatroom protocol requests
+	if reqUri.Scheme == "chatroom" {
+		// Process chatroom requests through the asset server
+		webviewRequest, err := webview.NewRequest(
+			f.chromium.Environment(),
+			args,
+			func(fn func()) {
+				runtime.LockOSThread()
+				defer runtime.UnlockOSThread()
+				if f.mainWindow.InvokeRequired() {
+					var wg sync.WaitGroup
+					wg.Add(1)
+					f.mainWindow.Invoke(func() {
+						fn()
+						wg.Done()
+					})
+					wg.Wait()
+				} else {
+					fn()
+				}
+			})
+
+		if err != nil {
+			f.logger.Error("%s: NewRequest failed: %s", uri, err)
+			return
+		}
+
+		f.assets.ServeWebViewRequest(webviewRequest)
+		return
+	}
+
+	if f.assets == nil {
+		// We are using the devServer let the WebView2 handle the request with its default handler
 		return
 	}
 
