@@ -503,6 +503,7 @@ GtkWidget *SetupWebview(void *contentManager, GtkWindow *window, int hideWindowO
     // gtk_container_add(GTK_CONTAINER(window), webview);
     WebKitWebContext *context = webkit_web_context_get_default();
     webkit_web_context_register_uri_scheme(context, "wails", (WebKitURISchemeRequestCallback)processURLRequest, NULL, NULL);
+    webkit_web_context_register_uri_scheme(context, "chatroom", (WebKitURISchemeRequestCallback)processURLRequest, NULL, NULL);
     g_signal_connect(G_OBJECT(webview), "load-changed", G_CALLBACK(webviewLoadChanged), NULL);
 
     if(disableWebViewDragAndDrop)
