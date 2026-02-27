@@ -106,4 +106,5 @@ struct Preferences {
 @end
 
 
+
 #endif /* WailsContext_h */

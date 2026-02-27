@@ -114,11 +114,15 @@ func (d *AssetServer) processWebViewRequestInternal(r webview.Request) {
 
 	// For server requests, the URL is parsed from the URI supplied on the Request-Line as stored in RequestURI. For
 	// most requests, fields other than Path and RawQuery will be empty. (See RFC 7230, Section 5.3)
+	isChatroom := req.URL.Scheme == "chatroom"
 	req.URL.Scheme = ""
 	req.URL.Host = ""
 	req.URL.Fragment = ""
 	req.URL.RawFragment = ""
 
+	if isChatroom {
+		req.URL.RawQuery = req.URL.RawQuery + "&isChatroom=true"
+	}
 	if url := req.URL; req.RequestURI == "" && url != nil {
 		req.RequestURI = url.String()
 	}
@@ -141,10 +145,10 @@ func (d *AssetServer) processWebViewRequestInternal(r webview.Request) {
 		req.Host = host
 	}
 
-	if expectedHost := d.ExpectedWebViewHost; expectedHost != "" && expectedHost != req.Host {
-		d.webviewRequestErrorHandler(uri, rw, fmt.Errorf("expected host '%s' in request, but was '%s'", expectedHost, req.Host))
-		return
-	}
+	//if expectedHost := d.ExpectedWebViewHost; expectedHost != "" && expectedHost != req.Host {
+	//	d.webviewRequestErrorHandler(uri, rw, fmt.Errorf("expected host '%s' in request, but was '%s'", expectedHost, req.Host))
+	//	return
+	//}
 
 	d.ServeHTTP(rw, req)
 }

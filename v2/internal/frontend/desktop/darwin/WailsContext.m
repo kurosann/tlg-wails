@@ -224,6 +224,9 @@ typedef void (^schemeTaskCaller)(id<WKURLSchemeTask>);
     }
     config.applicationNameForUserAgent = @"wails.io";
     [config setURLSchemeHandler:self forURLScheme:@"wails"];
+    
+    // 注册 chatroom 协议
+    [config setURLSchemeHandler:self forURLScheme:@"chatroom"];
 
     if (preferences.tabFocusesLinks != NULL) {
         config.preferences.tabFocusesLinks = *preferences.tabFocusesLinks;
