@@ -114,7 +114,7 @@ func (d *AssetServer) processWebViewRequestInternal(r webview.Request) {
 
 	// For server requests, the URL is parsed from the URI supplied on the Request-Line as stored in RequestURI. For
 	// most requests, fields other than Path and RawQuery will be empty. (See RFC 7230, Section 5.3)
-	isChatroom := req.URL.Scheme == "chatroom"
+	isChatroom := strings.HasPrefix(req.URL.Host, "chatroom")
 	req.URL.Scheme = ""
 	req.URL.Host = ""
 	req.URL.Fragment = ""
