@@ -4,6 +4,13 @@ package app
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"net"
+	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
 
 	"github.com/wailsapp/wails/v2/internal/binding"
 	"github.com/wailsapp/wails/v2/internal/frontend/desktop"
@@ -11,6 +18,7 @@ import (
 	"github.com/wailsapp/wails/v2/internal/frontend/runtime"
 	"github.com/wailsapp/wails/v2/internal/logger"
 	"github.com/wailsapp/wails/v2/internal/menumanager"
+	"github.com/wailsapp/wails/v2/pkg/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options"
 )
 
@@ -22,6 +30,11 @@ func (a *App) Run() error {
 		a.shutdownCallback(a.ctx)
 	}
 	return err
+}
+
+// rejectRequest 直接拒绝请求，返回 403 Forbidden。
+func rejectRequest(w http.ResponseWriter) {
+	w.WriteHeader(http.StatusForbidden)
 }
 
 // CreateApp creates the app!
@@ -83,6 +96,62 @@ func CreateApp(appoptions *options.App) (*App, error) {
 	}
 
 	messageDispatcher := dispatcher.NewDispatcher(ctx, myLogger, appBindings, eventHandler, appoptions.ErrorFormatter)
+
+	// Start HTTP server in production so the webview can load http://localhost:port (same as dev).
+	var bindingsJSON string
+	if !IsObfuscated() {
+		var errBind error
+		bindingsJSON, errBind = appBindings.ToJSON()
+		if errBind != nil {
+			return nil, errBind
+		}
+	} else {
+		appBindings.DB().UpdateObfuscatedCallMap()
+	}
+	prodAssetServer, err := assetserver.NewAssetServerMainPage(bindingsJSON, appoptions, false, myLogger, runtime.RuntimeAssetsBundle)
+	if err != nil {
+		return nil, err
+	}
+	// Random token so only our app (with the URL we give it) can load assets; other clients get connection closed with no response.
+	tokenBytes := make([]byte, 16)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		return nil, err
+	}
+	assetToken := hex.EncodeToString(tokenBytes)
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got := r.URL.Query().Get("_wails")
+		referer := r.Header.Get("Referer")
+		path := r.URL.Path
+		isDoc := path == "" || path == "/" || path == "/index.html" || strings.HasSuffix(path, "/")
+		allowed := got == assetToken || (referer != "" && strings.Contains(referer, "_wails="+assetToken))
+		if isDoc {
+			if got != assetToken {
+				rejectRequest(w)
+				return
+			}
+		} else if !allowed {
+			rejectRequest(w)
+			return
+		}
+		prodAssetServer.ServeHTTP(w, r)
+	})
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return nil, err
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	go func() {
+		if err := http.Serve(listener, handler); err != nil && err != http.ErrServerClosed {
+			myLogger.Error("Production asset HTTP server: %s", err)
+		}
+	}()
+	// Pass token down via context; starturl carries the token so only our window can load it.
+	ctx = context.WithValue(ctx, "assetservertoken", assetToken)
+	startURL, _ := url.Parse("http://127.0.0.1:" + strconv.Itoa(port) + "/?_wails=" + assetToken)
+	ctx = context.WithValue(ctx, "starturl", startURL)
+	myLogger.Debug("Serving assets at http://127.0.0.1:%d (token-protected)", port)
+
 	appFrontend := desktop.NewFrontend(ctx, appoptions, myLogger, appBindings, messageDispatcher)
 	eventHandler.AddFrontend(appFrontend)
 

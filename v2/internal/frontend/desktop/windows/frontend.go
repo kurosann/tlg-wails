@@ -98,6 +98,18 @@ func NewFrontend(ctx context.Context, appoptions *options.App, myLogger *logger.
 
 	if port, _ := ctx.Value("assetserverport").(string); port != "" {
 		result.startURL.Host = net.JoinHostPort(result.startURL.Host, port)
+		if token, _ := ctx.Value("assetservertoken").(string); token != "" {
+			q := result.startURL.Query()
+			q.Set("_wails", token)
+			result.startURL.RawQuery = q.Encode()
+		}
+	}
+	if result.startURL != nil && result.startURL.RawQuery == "" {
+		if token, _ := ctx.Value("assetservertoken").(string); token != "" {
+			q := result.startURL.Query()
+			q.Set("_wails", token)
+			result.startURL.RawQuery = q.Encode()
+		}
 	}
 
 	var bindings string
