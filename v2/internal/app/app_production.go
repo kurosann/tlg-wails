@@ -122,8 +122,15 @@ func CreateApp(appoptions *options.App) (*App, error) {
 		got := r.URL.Query().Get("_wails")
 		referer := r.Header.Get("Referer")
 		path := r.URL.Path
-		isDoc := path == "" || path == "/" || path == "/index.html" || strings.HasSuffix(path, "/")
-		allowed := got == assetToken || (referer != "" && strings.Contains(referer, "_wails="+assetToken))
+		isDoc := path == "" || path == "/" || strings.HasSuffix(path, ".html") || strings.HasSuffix(path, "/")
+		// 子资源：允许 URL 带 token，或 Referer 同源（Referer 通常不含 query，不会带 _wails）
+		sameOriginReferer := false
+		if referer != "" && r.Host != "" {
+			if refURL, err := url.Parse(referer); err == nil && refURL.Host == r.Host {
+				sameOriginReferer = true
+			}
+		}
+		allowed := got == assetToken || sameOriginReferer
 		if isDoc {
 			if got != assetToken {
 				rejectRequest(w)
