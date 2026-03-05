@@ -102,7 +102,7 @@ import (
 
 var initOnce = sync.Once{}
 
-const startURL = "wails://wails/"
+const startURL = "http://localhost"
 
 var secondInstanceBuffer = make(chan options.SecondInstanceData, 1)
 
@@ -161,7 +161,7 @@ func NewFrontend(ctx context.Context, appoptions *options.App, myLogger *logger.
 		result.startURL = _starturl
 	} else {
 		if port, _ := ctx.Value("assetserverport").(string); port != "" {
-			result.startURL.Host = net.JoinHostPort(result.startURL.Host+".localhost", port)
+			result.startURL.Host = net.JoinHostPort(result.startURL.Host, port)
 		}
 
 		var bindings string
