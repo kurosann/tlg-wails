@@ -144,7 +144,6 @@ func CreateApp(appoptions *options.App) (*App, error) {
 		path := r.URL.Path
 		isDoc := path == "" || path == "/" || strings.HasSuffix(path, ".html") || strings.HasSuffix(path, "/")
 
-		// 文档请求：必须带 token，且拒绝外部浏览器
 		if isDoc {
 			if got != assetToken {
 				rejectRequest(w)
@@ -158,7 +157,6 @@ func CreateApp(appoptions *options.App) (*App, error) {
 			return
 		}
 
-		// 子资源：允许 URL 带 token、Referer 同源、或来自本机（WebView2 可能不发送 Referer）
 		hasToken := got == assetToken
 		sameOriginReferer := false
 		if referer := r.Header.Get("Referer"); referer != "" && r.Host != "" {
