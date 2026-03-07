@@ -32,9 +32,30 @@ func (a *App) Run() error {
 	return err
 }
 
-// rejectRequest 直接拒绝请求，返回 403 Forbidden。
+// rejectRequest 关闭连接且不返回任何响应，浏览器会显示“连接被重置”而非 403。
 func rejectRequest(w http.ResponseWriter) {
+	if h, ok := w.(http.Hijacker); ok {
+		if conn, _, err := h.Hijack(); err == nil {
+			conn.Close()
+			return
+		}
+	}
 	w.WriteHeader(http.StatusForbidden)
+}
+
+// isLikelyExternalBrowser 判断是否来自外部浏览器。Wails 应用 UA 含 "wails.io"；Windows WebView2 含 "edg/"。
+func isLikelyExternalBrowser(ua string) bool {
+	ua = strings.ToLower(ua)
+	if strings.Contains(ua, "wails.io") || strings.Contains(ua, "edg/") {
+		return false // Wails / WebView2，放行
+	}
+	if strings.Contains(ua, "chrome/") || strings.Contains(ua, "firefox/") {
+		return true
+	}
+	if strings.Contains(ua, "safari/") && !strings.Contains(ua, "chrom") {
+		return true
+	}
+	return false
 }
 
 // CreateApp creates the app!
@@ -120,27 +141,42 @@ func CreateApp(appoptions *options.App) (*App, error) {
 	assetToken := hex.EncodeToString(tokenBytes)
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		got := r.URL.Query().Get("_wails")
-		referer := r.Header.Get("Referer")
 		path := r.URL.Path
 		isDoc := path == "" || path == "/" || strings.HasSuffix(path, ".html") || strings.HasSuffix(path, "/")
-		// 子资源：允许 URL 带 token，或 Referer 同源（Referer 通常不含 query，不会带 _wails）
-		sameOriginReferer := false
-		if referer != "" && r.Host != "" {
-			if refURL, err := url.Parse(referer); err == nil && refURL.Host == r.Host {
-				sameOriginReferer = true
-			}
-		}
-		allowed := got == assetToken || sameOriginReferer
+
+		// 文档请求：必须带 token，且拒绝外部浏览器
 		if isDoc {
 			if got != assetToken {
 				rejectRequest(w)
 				return
 			}
-		} else if !allowed {
-			rejectRequest(w)
+			if isLikelyExternalBrowser(r.Header.Get("User-Agent")) {
+				rejectRequest(w)
+				return
+			}
+			prodAssetServer.ServeHTTP(w, r)
 			return
 		}
-		prodAssetServer.ServeHTTP(w, r)
+
+		// 子资源：允许 URL 带 token、Referer 同源、或来自本机（WebView2 可能不发送 Referer）
+		hasToken := got == assetToken
+		sameOriginReferer := false
+		if referer := r.Header.Get("Referer"); referer != "" && r.Host != "" {
+			if refURL, err := url.Parse(referer); err == nil && refURL.Host == r.Host {
+				sameOriginReferer = true
+			}
+		}
+		isLocalhost := strings.HasPrefix(r.Host, "127.0.0.1:") || strings.HasPrefix(r.Host, "localhost:")
+
+		if hasToken || sameOriginReferer || isLocalhost {
+			if isLikelyExternalBrowser(r.Header.Get("User-Agent")) {
+				rejectRequest(w)
+				return
+			}
+			prodAssetServer.ServeHTTP(w, r)
+			return
+		}
+		rejectRequest(w)
 	})
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
